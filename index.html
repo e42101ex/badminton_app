@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>羽球雙打配對</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#0f1720">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="羽球配對">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" href="./icon-192.png">
+<style>
+  :root {
+    --bg: #0f1720;
+    --card: #1b2430;
+    --card2: #232f3e;
+    --line: #313f52;
+    --txt: #e8edf3;
+    --muted: #8ea0b5;
+    --accent: #4ade80;
+    --accent2: #38bdf8;
+    --rest: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--txt);
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap {
+    max-width: 760px; margin: 0 auto;
+    padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 80px calc(16px + env(safe-area-inset-left));
+  }
+  h1 { font-size: 1.4rem; margin: 8px 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+  .sub { color: var(--muted); font-size: .85rem; margin: 0 0 18px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input[type=text], input[type=number] {
+    background: var(--card2);
+    border: 1px solid var(--line);
+    color: var(--txt);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 1rem;
+    outline: none;
+  }
+  input[type=text] { flex: 1; min-width: 140px; }
+  input[type=number] { width: 70px; }
+  input:focus { border-color: var(--accent2); }
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--card2);
+    color: var(--txt);
+    transition: filter .15s, opacity .15s;
+  }
+  button:hover { filter: brightness(1.15); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); color: #06301a; }
+  button.blue { background: var(--accent2); color: #052738; }
+  button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .players { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 8px 6px 14px; font-size: .9rem;
+  }
+  .chip .x { cursor: pointer; color: var(--muted); font-weight: 700; padding: 0 4px; }
+  .chip .x:hover { color: var(--danger); }
+  .chip.paused { opacity: .45; }
+  .chip .toggle { cursor: pointer; font-size: .75rem; color: var(--muted); }
+  .settings { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: .78rem; color: var(--muted); }
+  .round-block {
+    border-top: 1px solid var(--line);
+    padding-top: 8px; margin-top: 8px;
+  }
+  .round-block:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .round-head {
+    font-weight: 700; font-size: .85rem; color: var(--accent2);
+    margin-bottom: 5px;
+  }
+  .court {
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 10px; margin-bottom: 5px;
+  }
+  .court .label { font-size: .72rem; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
+  .matchup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .team { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 110px; }
+  .pill {
+    background: #142b1f; border: 1px solid #2b5c3f; color: var(--accent);
+    padding: 4px 11px; border-radius: 8px; font-weight: 600; font-size: .92rem;
+  }
+  .team.b .pill { background: #0e2634; border-color: #1f5069; color: var(--accent2); }
+  .vs { color: var(--muted); font-weight: 700; font-size: .82rem; }
+  .rest-line { margin-top: 3px; font-size: .82rem; color: var(--rest); }
+  .rest-line b { color: var(--rest); }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th, td { text-align: center; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; }
+  td.name { text-align: left; font-weight: 600; }
+  .empty { color: var(--muted); text-align: center; padding: 20px 0; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .round-no { color: var(--accent2); }
+  details summary { cursor: pointer; color: var(--muted); font-size: .85rem; }
+  .weights { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .weights .field label { font-size: .8rem; }
+  .hint { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+  .check {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 12px; font-size: .9rem; color: var(--txt); cursor: pointer;
+  }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏸 羽球雙打配對</h1>
+  <p class="sub">貪婪加權演算法:自動平衡上場次數、休息、搭檔與對手多樣性。</p>
+
+  <!-- 玩家管理 -->
+  <div class="card">
+    <h2>玩家名單</h2>
+    <div class="row">
+      <input type="text" id="nameInput" placeholder="輸入名字後按 Enter 或「新增」" autocomplete="off">
+      <button class="primary" id="addBtn">新增</button>
+    </div>
+    <div class="players" id="players"></div>
+  </div>
+
+  <!-- 設定 -->
+  <div class="card">
+    <h2>設定</h2>
+    <div class="settings">
+      <div class="field">
+        <label>場地數</label>
+        <input type="number" id="courts" min="1" max="8" value="1">
+      </div>
+    </div>
+    <p class="hint" id="courtHint"></p>
+    <label class="check"><input type="checkbox" id="showRest"> 顯示每輪休息名單</label>
+    <details style="margin-top:14px;">
+      <summary>進階設定(每隊人數、配對權重)</summary>
+      <div class="field" style="margin-top:12px;">
+        <label>每隊人數(2 = 雙打)</label>
+        <input type="number" id="teamSize" min="1" max="3" value="2" style="max-width:90px;">
+      </div>
+      <div class="weights">
+        <div class="field">
+          <label>上場次數平衡 (W1)</label>
+          <input type="number" id="w1" value="10" min="0">
+        </div>
+        <div class="field">
+          <label>連續休息優先 (W2)</label>
+          <input type="number" id="w2" value="6" min="0">
+        </div>
+        <div class="field">
+          <label>避免重複搭檔 (W3)</label>
+          <input type="number" id="w3" value="4" min="0">
+        </div>
+        <div class="field">
+          <label>避免重複對手 (W4)</label>
+          <input type="number" id="w4" value="2" min="0">
+        </div>
+      </div>
+      <p class="hint">數值越大代表越重視該項。改完下一輪生效。</p>
+    </details>
+  </div>
+
+  <div class="toolbar">
+    <button class="blue" id="nextBtn">▶ 產生下一輪</button>
+    <div class="row" style="gap:6px;">
+      <button class="primary" id="manyBtn">產生</button>
+      <input type="number" id="numRounds" min="1" max="50" value="6" style="width:60px;">
+      <span style="color:var(--muted);font-size:.9rem;">輪</span>
+      <button class="ghost" id="recBtn" title="填入建議的公平輪數">🎯 建議</button>
+    </div>
+    <button class="ghost" id="copyBtn">📋 複製整場文字</button>
+    <button class="ghost" id="resetRoundBtn">重排最後一輪</button>
+    <button class="ghost" id="resetAllBtn">全部重置</button>
+  </div>
+
+  <!-- 賽程表 -->
+  <div class="card">
+    <h2>賽程表(共 <span class="round-no" id="roundNo">0</span> 輪)</h2>
+    <div id="schedule"><p class="empty">按「產生下一輪」或「產生 N 輪」開始。</p></div>
+  </div>
+
+  <!-- 統計 -->
+  <div class="card">
+    <h2>統計</h2>
+    <div id="stats"><p class="empty">尚無資料。</p></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- 狀態 ----------
+  var state = {
+    players: [],          // { id, name, active }
+    round: 0,
+    playCount: {},        // id -> 上場次數
+    restStreak: {},       // id -> 連續休息輪數
+    restCount: {},        // id -> 累計休息次數
+    partner: {},          // "a|b" -> 次數
+    opponent: {},         // "a|b" -> 次數
+    history: [],          // [{ round, courts:[{teamA:[ids],teamB:[ids]}], resting:[ids] }]
+    showRest: false       // 是否顯示/複製每輪休息名單
+  };
+  var nextId = 1;
+
+  var recRounds = 0;      // 目前設定下的「公平週期」輪數(建議打其倍數)
+  var recMultiplier = 0;  // 「🎯 建議」按鈕循環倍數:每按一次 1→2→3→4→回到 1
+
+  // ---------- 工具 ----------
+  function gcd(a, b) { while (b) { var t = b; b = a % b; a = t; } return a; }
+  function key(a, b) { return a < b ? a + "|" + b : b + "|" + a; }
+  function get(map, k) { return map[k] || 0; }
+  function byId(id) { return state.players.find(function (p) { return p.id === id; }); }
+  function nameOf(id) { var p = byId(id); return p ? p.name : "?"; }
+
+  // 產生一個陣列的所有 size 大小組合
+  function combinations(arr, size) {
+    var res = [];
+    (function rec(start, combo) {
+      if (combo.length === size) { res.push(combo.slice()); return; }
+      for (var i = start; i < arr.length; i++) {
+        combo.push(arr[i]);
+        rec(i + 1, combo);
+        combo.pop();
+      }
+    })(0, []);
+    return res;
+  }
+
+  // 把 2*teamSize 個人分成兩隊,枚舉所有分法,回傳成本最低的那種
+  function bestSplit(group, teamSize, W) {
+    var half = combinations(group, teamSize);
+    var best = null, bestCost = Infinity;
+    var seen = {};
+    for (var i = 0; i < half.length; i++) {
+      var teamA = half[i];
+      var setA = {};
+      teamA.forEach(function (x) { setA[x] = true; });
+      var teamB = group.filter(function (x) { return !setA[x]; });
+      // 避免 A/B 對調重複計算
+      var sig = teamA.slice().sort().join(",");
+      var sigB = teamB.slice().sort().join(",");
+      var canon = sig < sigB ? sig + "#" + sigB : sigB + "#" + sig;
+      if (seen[canon]) continue;
+      seen[canon] = true;
+
+      var cost = 0;
+      // 搭檔重複成本
+      [teamA, teamB].forEach(function (t) {
+        var pairs = combinations(t, 2);
+        pairs.forEach(function (pr) { cost += get(state.partner, key(pr[0], pr[1])) * W.w3; });
+      });
+      // 對手重複成本
+      teamA.forEach(function (a) {
+        teamB.forEach(function (b) { cost += get(state.opponent, key(a, b)) * W.w4; });
+      });
+      if (cost < bestCost) { bestCost = cost; best = { teamA: teamA, teamB: teamB }; }
+    }
+    return best;
+  }
+
+  // Fisher-Yates 洗牌(用來打散 tie-break)
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  // ---------- 核心:產生一輪(不負責畫面) ----------
+  // 回傳 true 表示成功,false 表示人數不足
+  function generateOne() {
+    var W = {
+      w1: +document.getElementById("w1").value,
+      w2: +document.getElementById("w2").value,
+      w3: +document.getElementById("w3").value,
+      w4: +document.getElementById("w4").value
+    };
+    var courts = Math.max(1, +document.getElementById("courts").value);
+    var teamSize = Math.max(1, +document.getElementById("teamSize").value);
+    var perCourt = teamSize * 2;
+
+    var active = state.players.filter(function (p) { return p.active; }).map(function (p) { return p.id; });
+    if (active.length < perCourt) {
+      return false;
+    }
+
+    // 實際可開的場地數(受人數限制)
+    var maxCourts = Math.floor(active.length / perCourt);
+    var useCourts = Math.min(courts, maxCourts);
+    var needPlayers = useCourts * perCourt;
+
+    // Step 1:依 restScore 選出要上場的人(分數越低越優先上場)
+    // restScore = playCount*W1 - restStreak*W2   → 打越少、休越久 分數越低
+    var pool = active.slice();
+    shuffle(pool); // 先打散,讓同分的人隨機
+    pool.sort(function (a, b) {
+      var sa = get(state.playCount, a) * W.w1 - get(state.restStreak, a) * W.w2;
+      var sb = get(state.playCount, b) * W.w1 - get(state.restStreak, b) * W.w2;
+      return sa - sb;
+    });
+    var playing = pool.slice(0, needPlayers);
+    var resting = pool.slice(needPlayers);
+
+    // Step 2:把上場的人平均分到各場地,再於每場分隊
+    // 為了讓各場強弱不特別偏,直接依序切;分隊時最小化重複度
+    shuffle(playing);
+    var courtsResult = [];
+    for (var c = 0; c < useCourts; c++) {
+      var group = playing.slice(c * perCourt, (c + 1) * perCourt);
+      var split = bestSplit(group, teamSize, W);
+      courtsResult.push(split);
+    }
+
+    // Step 3:更新統計
+    playing.forEach(function (id) {
+      state.playCount[id] = get(state.playCount, id) + 1;
+      state.restStreak[id] = 0;
+    });
+    resting.forEach(function (id) {
+      state.restStreak[id] = get(state.restStreak, id) + 1;
+      state.restCount[id] = get(state.restCount, id) + 1;
+    });
+    courtsResult.forEach(function (ct) {
+      // 搭檔
+      [ct.teamA, ct.teamB].forEach(function (t) {
+        combinations(t, 2).forEach(function (pr) {
+          state.partner[key(pr[0], pr[1])] = get(state.partner, key(pr[0], pr[1])) + 1;
+        });
+      });
+      // 對手
+      ct.teamA.forEach(function (a) {
+        ct.teamB.forEach(function (b) {
+          state.opponent[key(a, b)] = get(state.opponent, key(a, b)) + 1;
+        });
+      });
+    });
+
+    state.round++;
+    state.history.push({ round: state.round, courts: courtsResult, resting: resting });
+    return true;
+  }
+
+  // 產生 n 輪並更新畫面
+  function generateRounds(n) {
+    var perCourt = Math.max(1, +document.getElementById("teamSize").value) * 2;
+    var active = state.players.filter(function (p) { return p.active; }).length;
+    if (active < perCourt) {
+      alert("上場人數不足:一個場地需要 " + perCourt + " 人,目前只有 " + active + " 人。");
+      return;
+    }
+    for (var i = 0; i < n; i++) { generateOne(); }
+    save();
+    renderSchedule();
+    renderStats();
+  }
+
+  // 還原最後一輪的統計並移除它
+  function undoLast() {
+    var cur = state.history[state.history.length - 1];
+    if (!cur) return false;
+    var playing = [];
+    cur.courts.forEach(function (ct) {
+      ct.teamA.forEach(function (x) { playing.push(x); });
+      ct.teamB.forEach(function (x) { playing.push(x); });
+      [ct.teamA, ct.teamB].forEach(function (t) {
+        combinations(t, 2).forEach(function (pr) {
+          state.partner[key(pr[0], pr[1])] = get(state.partner, key(pr[0], pr[1])) - 1;
+        });
+      });
+      ct.teamA.forEach(function (a) {
+        ct.teamB.forEach(function (b) {
+          state.opponent[key(a, b)] = get(state.opponent, key(a, b)) - 1;
+        });
+      });
+    });
+    playing.forEach(function (id) { state.playCount[id] = get(state.playCount, id) - 1; });
+    cur.resting.forEach(function (id) {
+      state.restStreak[id] = Math.max(0, get(state.restStreak, id) - 1);
+      state.restCount[id] = Math.max(0, get(state.restCount, id) - 1);
+    });
+    // restStreak 對上場者無法完美還原(先前歸零),此為近似;重排仍能得到合理結果
+    state.round--;
+    state.history.pop();
+    return true;
+  }
+
+  // 重排最後一輪:還原後重新產生一輪
+  function resetRound() {
+    if (state.history.length === 0) return;
+    undoLast();
+    generateOne();
+    save();
+    renderSchedule();
+    renderStats();
+  }
+
+  // ---------- 渲染 ----------
+  function renderPlayers() {
+    var box = document.getElementById("players");
+    box.innerHTML = "";
+    if (state.players.length === 0) {
+      box.innerHTML = '<span class="empty" style="padding:4px;">還沒有玩家,先新增吧。</span>';
+      return;
+    }
+    state.players.forEach(function (p) {
+      var chip = document.createElement("span");
+      chip.className = "chip" + (p.active ? "" : " paused");
+      var label = document.createElement("span");
+      label.textContent = p.name;
+      var toggle = document.createElement("span");
+      toggle.className = "toggle";
+      toggle.textContent = p.active ? "暫停" : "恢復";
+      toggle.onclick = function () { p.active = !p.active; save(); renderPlayers(); };
+      var x = document.createElement("span");
+      x.className = "x";
+      x.textContent = "×";
+      x.onclick = function () { removePlayer(p.id); };
+      chip.appendChild(label);
+      chip.appendChild(toggle);
+      chip.appendChild(x);
+      box.appendChild(chip);
+    });
+    renderCourtHint();
+  }
+
+  function renderSchedule() {
+    document.getElementById("roundNo").textContent = state.round;
+    var box = document.getElementById("schedule");
+    if (state.history.length === 0) {
+      box.innerHTML = '<p class="empty">按「產生下一輪」或「產生 N 輪」開始。</p>';
+      return;
+    }
+    box.innerHTML = "";
+    // 由新到舊顯示,最新一輪在最上面
+    state.history.slice().reverse().forEach(function (rd) {
+      var block = document.createElement("div");
+      block.className = "round-block";
+      var head = '<div class="round-head">第 ' + rd.round + ' 輪</div>';
+      var courtsHtml = rd.courts.map(function (ct, i) {
+        var teamA = ct.teamA.map(nameOf).join(" 、 ");
+        var teamB = ct.teamB.map(nameOf).join(" 、 ");
+        var label = rd.courts.length > 1 ? '<div class="label">場地 ' + (i + 1) + '</div>' : '';
+        return '<div class="court">' + label +
+          '<div class="matchup">' +
+            '<div class="team a"><span class="pill">' + teamA + '</span></div>' +
+            '<span class="vs">VS</span>' +
+            '<div class="team b"><span class="pill">' + teamB + '</span></div>' +
+          '</div></div>';
+      }).join("");
+      var restHtml = (state.showRest && rd.resting.length)
+        ? '<div class="rest-line">😴 休息:<b>' + rd.resting.map(nameOf).join("、") + '</b></div>'
+        : '';
+      block.innerHTML = head + courtsHtml + restHtml;
+      box.appendChild(block);
+    });
+  }
+
+  function renderCourtHint() {
+    var el = document.getElementById("courtHint");
+    if (!el) return;
+    var teamSize = Math.max(1, +document.getElementById("teamSize").value);
+    var perCourt = teamSize * 2;
+    var setCourts = Math.max(1, +document.getElementById("courts").value);
+    var active = state.players.filter(function (p) { return p.active; }).length;
+    var maxCourts = Math.floor(active / perCourt);
+    if (active < perCourt) {
+      recRounds = 0;
+      el.innerHTML = "⚠️ 上場人數不足:一場需要 " + perCourt + " 人,目前只有 " + active + " 人。";
+      el.style.color = "var(--rest)";
+      return;
+    }
+    var use = Math.min(setCourts, maxCourts);
+    var P = use * perCourt;          // 每輪實際上場人數
+    var rest = active - P;
+    var txt = "目前 " + active + " 人 → 實際開 <b>" + use + "</b> 場、每輪 " + rest + " 人休息。";
+    var capped = use < setCourts;
+    if (capped) {
+      txt += " (設定 " + setCourts + " 場,但人數只夠開 " + maxCourts + " 場;要再多 " +
+        ((setCourts * perCourt) - active) + " 人才能開滿。)";
+    }
+
+    // 公平週期:每 R0 輪所有人上場次數完全相同(休息也相同)
+    var g = gcd(active, P);
+    var R0 = active / g;
+    var perPlay = P / g;             // 每 R0 輪每人上場次數
+    recRounds = R0;
+    if (rest === 0) {
+      txt += "<br>🎯 每輪全員上場,輪數隨意都很公平。";
+    } else {
+      txt += "<br>🎯 建議打 <b>" + R0 + "</b> 輪(或其倍數 " + (R0 * 2) + "、" + (R0 * 3) +
+        "…):每 " + R0 + " 輪所有人剛好各上場 " + perPlay + " 次、休息 " + (R0 - perPlay) +
+        " 次,最平均。按「🎯 建議」可自動填入。";
+    }
+
+    // 每個人都互相當過隊友:覆蓋設計下限 = ⌈C(N,2) ÷ 每輪配對數⌉
+    if (teamSize >= 2) {
+      var totalPairs = active * (active - 1) / 2;               // 需湊齊的隊友配對
+      var pairsPerTeam = teamSize * (teamSize - 1) / 2;         // 一隊內部配對數
+      var pairsPerRound = use * 2 * pairsPerTeam;               // 每輪產生的配對
+      var teammateRounds = Math.ceil(totalPairs / pairsPerRound);
+      txt += "<br>🤝 若要每人都互相當過隊友:理論上需 <b>" + teammateRounds +
+        "</b> 輪。因輪休與隨機性,通常要 1.5 倍上下(約 " +
+        Math.round(teammateRounds * 1.3) + "～" + Math.round(teammateRounds * 1.8) + " 輪)。";
+    }
+
+    el.style.color = capped ? "var(--rest)" : "var(--muted)";
+    el.innerHTML = txt;
+  }
+
+  function renderStats() {
+    var box = document.getElementById("stats");
+    var ps = state.players.slice();
+    if (ps.length === 0) { box.innerHTML = '<p class="empty">尚無資料。</p>'; return; }
+    ps.sort(function (a, b) { return get(state.playCount, b.id) - get(state.playCount, a.id); });
+    var html = '<table><thead><tr><th class="name">玩家</th><th>上場</th><th>休息</th><th>連休</th><th>不同搭檔</th><th>不同對手</th></tr></thead><tbody>';
+    ps.forEach(function (p) {
+      var partners = 0, opps = 0;
+      Object.keys(state.partner).forEach(function (k) {
+        if (state.partner[k] > 0 && k.split("|").indexOf(String(p.id)) >= 0) partners++;
+      });
+      Object.keys(state.opponent).forEach(function (k) {
+        if (state.opponent[k] > 0 && k.split("|").indexOf(String(p.id)) >= 0) opps++;
+      });
+      html += '<tr><td class="name">' + p.name + (p.active ? "" : " <span style=\"color:var(--muted);font-size:.75rem\">(暫停)</span>") + '</td>' +
+        '<td>' + get(state.playCount, p.id) + '</td>' +
+        '<td>' + get(state.restCount, p.id) + '</td>' +
+        '<td>' + get(state.restStreak, p.id) + '</td>' +
+        '<td>' + partners + '</td>' +
+        '<td>' + opps + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    box.innerHTML = html;
+  }
+
+  // ---------- 複製整場文字(貼 LINE) ----------
+  function buildScheduleText() {
+    if (state.history.length === 0) return "";
+    var lines = [];
+    lines.push("🏸 羽球配對(共 " + state.round + " 輪)");
+    state.history.forEach(function (rd) {
+      lines.push("");
+      lines.push("【第 " + rd.round + " 輪】");
+      rd.courts.forEach(function (ct, i) {
+        var a = ct.teamA.map(nameOf).join("、");
+        var b = ct.teamB.map(nameOf).join("、");
+        var prefix = rd.courts.length > 1 ? "場地" + (i + 1) + " " : "";
+        lines.push(prefix + a + " vs " + b);
+      });
+      if (state.showRest && rd.resting.length) {
+        lines.push("😴 休息:" + rd.resting.map(nameOf).join("、"));
+      }
+    });
+    return lines.join("\n");
+  }
+
+  function copyAll() {
+    var text = buildScheduleText();
+    if (!text) { alert("還沒有任何賽程可以複製,請先產生輪次。"); return; }
+    var btn = document.getElementById("copyBtn");
+    var done = function (ok) {
+      btn.textContent = ok ? "✓ 已複製!" : "✗ 複製失敗";
+      setTimeout(function () { btn.textContent = "📋 複製整場文字"; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallbackCopy(text, done); });
+    } else {
+      fallbackCopy(text, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      done(ok);
+    } catch (e) { done(false); }
+  }
+
+  // ---------- 動作 ----------
+  function addPlayer() {
+    var input = document.getElementById("nameInput");
+    var name = input.value.trim();
+    if (!name) return;
+    state.players.push({ id: nextId++, name: name, active: true });
+    input.value = "";
+    input.focus();
+    save();
+    renderPlayers();
+    renderStats();
+  }
+
+  function removePlayer(id) {
+    state.players = state.players.filter(function (p) { return p.id !== id; });
+    save();
+    renderPlayers();
+    renderStats();
+  }
+
+  function resetAll() {
+    if (!confirm("確定要清除所有輪次與統計?(玩家名單保留)")) return;
+    state.round = 0;
+    state.playCount = {};
+    state.restStreak = {};
+    state.restCount = {};
+    state.partner = {};
+    state.opponent = {};
+    state.history = [];
+    save();
+    renderSchedule();
+    renderStats();
+  }
+
+  // ---------- 儲存 (localStorage) ----------
+  function save() {
+    try {
+      localStorage.setItem("badminton_v1", JSON.stringify({ state: state, nextId: nextId }));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem("badminton_v1");
+      if (!raw) return;
+      var data = JSON.parse(raw);
+      state = data.state;
+      nextId = data.nextId;
+    } catch (e) {}
+  }
+
+  // ---------- 綁定 ----------
+  document.getElementById("addBtn").onclick = addPlayer;
+  document.getElementById("nameInput").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") addPlayer();
+  });
+  document.getElementById("nextBtn").onclick = function () { generateRounds(1); };
+  document.getElementById("manyBtn").onclick = function () {
+    var n = Math.max(1, Math.min(50, +document.getElementById("numRounds").value || 1));
+    generateRounds(n);
+  };
+  document.getElementById("recBtn").onclick = function () {
+    renderCourtHint(); // 確保用最新的人數/場地計算
+    var btn = this;
+    if (recRounds > 0) {
+      recMultiplier = (recMultiplier % 4) + 1;   // 1→2→3→4→1
+      var input = document.getElementById("numRounds");
+      input.value = Math.min(50, recRounds * recMultiplier);
+      input.style.transition = "background .15s";
+      input.style.background = "#2b4a3a";
+      setTimeout(function () { input.style.background = ""; }, 500);
+      btn.textContent = "🎯 建議 ×" + recMultiplier;
+    } else {
+      alert("上場人數不足,無法建議輪數。");
+    }
+  };
+  document.getElementById("copyBtn").onclick = copyAll;
+  document.getElementById("resetRoundBtn").onclick = resetRound;
+  document.getElementById("resetAllBtn").onclick = resetAll;
+  document.getElementById("courts").addEventListener("input", renderCourtHint);
+  document.getElementById("teamSize").addEventListener("input", renderCourtHint);
+  document.getElementById("showRest").addEventListener("change", function () {
+    state.showRest = this.checked;
+    save();
+    renderSchedule();
+  });
+
+  // ---------- 啟動 ----------
+  load();
+  // 首次使用時給幾個範例名字
+  if (state.players.length === 0) {
+    ["小明", "小華", "小美", "阿強"].forEach(function (n) {
+      state.players.push({ id: nextId++, name: n, active: true });
+    });
+    save();
+  }
+  // 舊資料相容:若無 history 欄位則補上
+  if (!state.history) state.history = [];
+  if (typeof state.showRest !== "boolean") state.showRest = false;
+  document.getElementById("showRest").checked = state.showRest;
+  renderPlayers();
+  renderSchedule();
+  renderStats();
+})();
+
+// 註冊 Service Worker(需在 http(s) 環境下才生效;file:// 會略過)
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./sw.js").catch(function () {});
+  });
+}
+</script>
+</body>
+</html>

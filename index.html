@@ -77,6 +77,7 @@
   button.primary { background: var(--accent); color: #06301a; }
   button.blue { background: var(--accent2); color: #052738; }
   button.ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+  button.ghost.danger:hover { border-color: var(--danger); color: var(--danger); filter: none; }
   button:disabled { opacity: .4; cursor: not-allowed; }
   .players { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .chip {
@@ -142,10 +143,11 @@
   <div class="card">
     <h2>玩家名單</h2>
     <div class="row">
-      <input type="text" id="nameInput" placeholder="輸入名字後按 Enter 或「新增」" autocomplete="off">
+      <input type="text" id="nameInput" placeholder="輸入名字按 Enter;或貼上多行名字一次加入" autocomplete="off">
       <button class="primary" id="addBtn">新增</button>
     </div>
     <div class="players" id="players"></div>
+    <button class="ghost danger" id="clearPlayersBtn" style="margin-top:12px;">🗑 清空玩家</button>
   </div>
 
   <!-- 設定 -->
@@ -617,20 +619,45 @@
   // ---------- 動作 ----------
   function addPlayer() {
     var input = document.getElementById("nameInput");
-    var name = input.value.trim();
-    if (!name) return;
-    state.players.push({ id: nextId++, name: name, active: true });
-    input.value = "";
-    input.focus();
-    save();
-    renderPlayers();
-    renderStats();
+    if (addPlayers([input.value])) {
+      input.value = "";
+      input.focus();
+    }
+  }
+
+  // 一次加入多個玩家(空白行自動略過);回傳實際加入數量
+  function addPlayers(names) {
+    var added = 0;
+    names.forEach(function (raw) {
+      var name = (raw || "").trim();
+      if (name) { state.players.push({ id: nextId++, name: name, active: true }); added++; }
+    });
+    if (added) { save(); renderPlayers(); renderStats(); }
+    return added;
   }
 
   function removePlayer(id) {
     state.players = state.players.filter(function (p) { return p.id !== id; });
     save();
     renderPlayers();
+    renderStats();
+  }
+
+  // 清空所有玩家(連同賽程與統計一起清除)
+  function clearAllPlayers() {
+    if (state.players.length === 0) return;
+    if (!confirm("確定要清空全部 " + state.players.length + " 位玩家嗎?\n賽程與統計也會一起清除,此動作無法復原。")) return;
+    state.players = [];
+    state.round = 0;
+    state.playCount = {};
+    state.restStreak = {};
+    state.restCount = {};
+    state.partner = {};
+    state.opponent = {};
+    state.history = [];
+    save();
+    renderPlayers();
+    renderSchedule();
     renderStats();
   }
 
@@ -654,20 +681,32 @@
       localStorage.setItem("badminton_v1", JSON.stringify({ state: state, nextId: nextId }));
     } catch (e) {}
   }
+  // 回傳 true 表示有讀到既有存檔(用來區分「全新使用者」與「清空過的使用者」)
   function load() {
     try {
       var raw = localStorage.getItem("badminton_v1");
-      if (!raw) return;
+      if (!raw) return false;
       var data = JSON.parse(raw);
       state = data.state;
       nextId = data.nextId;
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   }
 
   // ---------- 綁定 ----------
   document.getElementById("addBtn").onclick = addPlayer;
+  document.getElementById("clearPlayersBtn").onclick = clearAllPlayers;
   document.getElementById("nameInput").addEventListener("keydown", function (e) {
     if (e.key === "Enter") addPlayer();
+  });
+  // 貼上多行文字(名字換行名字…)時,自動拆成多位玩家
+  document.getElementById("nameInput").addEventListener("paste", function (e) {
+    var text = (e.clipboardData || window.clipboardData).getData("text");
+    if (text && /[\r\n]/.test(text)) {   // 只有含換行時才視為批次貼上
+      e.preventDefault();
+      addPlayers(text.split(/\r?\n/));
+      this.value = "";
+    }
   });
   document.getElementById("nextBtn").onclick = function () { generateRounds(1); };
   document.getElementById("manyBtn").onclick = function () {
@@ -701,9 +740,9 @@
   });
 
   // ---------- 啟動 ----------
-  load();
-  // 首次使用時給幾個範例名字
-  if (state.players.length === 0) {
+  var hadSaved = load();
+  // 只有「全新使用者」(從未存過檔)才給範例名字;清空過的使用者維持空白
+  if (!hadSaved && state.players.length === 0) {
     ["小明", "小華", "小美", "阿強"].forEach(function (n) {
       state.players.push({ id: nextId++, name: n, active: true });
     });

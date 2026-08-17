@@ -302,6 +302,10 @@
     history: [],          // [{ round, courts:[{teamA:[ids],teamB:[ids]}], resting:[ids] }]
     showRest: false,      // 是否顯示/複製每輪休息名單
     mode: "single",       // "single" 單面網(預排賽程) | "multi" 多面網(即時派場)
+    courtsBy: {           // 兩個模式各自記住場地數(多面網預設 2 面網)
+      single: 1,
+      multi: 2
+    },
     multi: {              // 多面網模式狀態
       courts: [],         // 每面網:null(空閒)或 { seq, players:[ids], teamA:[ids], teamB:[ids] }
       log: [],            // 已完成場次 [{ seq, court, teamA, teamB }]
@@ -785,6 +789,8 @@
   // 切換模式:顯示對應區塊
   function applyMode() {
     var multi = state.mode === "multi";
+    // 套用該模式自己記住的場地數(切模式不會互相影響)
+    document.getElementById("courts").value = state.courtsBy[state.mode];
     document.getElementById("multiUI").style.display = multi ? "" : "none";
     document.getElementById("singleUI").style.display = multi ? "none" : "";
     document.getElementById("modeSingleBtn").className = "mode-btn" + (multi ? "" : " on");
@@ -1049,6 +1055,7 @@
     state.multi.log = [];
     state.multi.gameSeq = 0;
     state.multi.lastSeq = {};
+    syncMultiCourts();   // 必須把場地補回來,否則場地狀況會整個空掉、無法開始下一場
   }
 
   function resetAll() {
@@ -1144,8 +1151,10 @@
 
   // 設定變動:兩個模式的提示與畫面都要更新
   function onSettingChange() {
+    state.courtsBy[state.mode] = courtsVal();   // 記住這個模式的場地數
     renderCourtHint();
-    if (state.mode === "multi") { syncMultiCourts(); save(); renderMulti(); }
+    if (state.mode === "multi") { syncMultiCourts(); renderMulti(); }
+    save();
   }
   document.getElementById("courts").addEventListener("input", onSettingChange);
   document.getElementById("teamSize").addEventListener("input", onSettingChange);
@@ -1194,6 +1203,9 @@
   if (!state.history) state.history = [];
   if (typeof state.showRest !== "boolean") state.showRest = false;
   if (state.mode !== "multi" && state.mode !== "single") state.mode = "single";
+  if (!state.courtsBy) state.courtsBy = { single: 1, multi: 2 };
+  if (!(state.courtsBy.single > 0)) state.courtsBy.single = 1;
+  if (!(state.courtsBy.multi > 0)) state.courtsBy.multi = 2;
   if (!state.multi) state.multi = { courts: [], log: [], gameSeq: 0, lastSeq: {} };
   if (!state.multi.courts) state.multi.courts = [];
   if (!state.multi.log) state.multi.log = [];

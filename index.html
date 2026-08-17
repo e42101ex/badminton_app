@@ -132,12 +132,57 @@
     margin-top: 12px; font-size: .9rem; color: var(--txt); cursor: pointer;
   }
   .check input { width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+  /* 模式切換 */
+  .modes { display: flex; gap: 8px; margin: 4px 0 6px; }
+  .mode-btn {
+    flex: 1; background: var(--card); border: 1px solid var(--line);
+    color: var(--muted); padding: 11px 8px;
+  }
+  .mode-btn.on {
+    background: var(--accent2); border-color: var(--accent2);
+    color: #052738;
+  }
+  /* 多面網:場地卡 */
+  .net {
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px; margin-bottom: 10px;
+  }
+  .net.idle { border-style: dashed; }
+  .net-head {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .net-name { font-weight: 700; font-size: .9rem; }
+  .net-tag { font-size: .72rem; color: var(--muted); }
+  .net-tag.live { color: var(--accent); }
+  .net-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .net-actions button { padding: 8px 12px; font-size: .88rem; }
+  .wait-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--card2); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; font-size: .88rem; margin: 0 6px 6px 0;
+  }
+  .wait-chip b { color: var(--rest); font-size: .8rem; }
+  .wait-chip.long { border-color: var(--rest); }
+  .log-line {
+    display: flex; gap: 8px; align-items: baseline;
+    padding: 5px 0; border-bottom: 1px solid var(--line); font-size: .88rem;
+  }
+  .log-line:last-child { border-bottom: none; }
+  .log-seq { color: var(--muted); font-size: .78rem; min-width: 52px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>🏸 羽球雙打配對</h1>
   <p class="sub">貪婪加權演算法:自動平衡上場次數、休息、搭檔與對手多樣性。</p>
+
+  <!-- 模式切換 -->
+  <div class="modes">
+    <button class="mode-btn" id="modeSingleBtn">單面網模式</button>
+    <button class="mode-btn" id="modeMultiBtn">多面網模式</button>
+  </div>
+  <p class="hint" id="modeHint" style="margin-bottom:16px;"></p>
 
   <!-- 玩家管理 -->
   <div class="card">
@@ -190,6 +235,30 @@
     </details>
   </div>
 
+  <!-- ===== 多面網模式 ===== -->
+  <div id="multiUI">
+    <div class="card">
+      <h2>場地狀況</h2>
+      <div id="multiCourts"></div>
+    </div>
+
+    <div class="card">
+      <h2>等待中(<span class="round-no" id="waitCount">0</span> 人)</h2>
+      <div id="waitList"><p class="empty">尚無等待中的玩家。</p></div>
+    </div>
+
+    <div class="card">
+      <h2>已完成(<span class="round-no" id="doneCount">0</span> 場)</h2>
+      <div class="toolbar" style="margin-bottom:12px;">
+        <button class="ghost" id="copyMultiBtn">📋 複製紀錄文字</button>
+        <button class="ghost danger" id="resetMultiBtn">清除場次紀錄</button>
+      </div>
+      <div id="multiLog"><p class="empty">還沒有完成的場次。</p></div>
+    </div>
+  </div>
+
+  <!-- ===== 單面網模式 ===== -->
+  <div id="singleUI">
   <div class="toolbar">
     <button class="blue" id="nextBtn">▶ 產生下一輪</button>
     <div class="row" style="gap:6px;">
@@ -208,6 +277,7 @@
     <h2>賽程表(共 <span class="round-no" id="roundNo">0</span> 輪)</h2>
     <div id="schedule"><p class="empty">按「產生下一輪」或「產生 N 輪」開始。</p></div>
   </div>
+  </div><!-- /singleUI -->
 
   <!-- 統計 -->
   <div class="card">
@@ -230,7 +300,14 @@
     partner: {},          // "a|b" -> 次數
     opponent: {},         // "a|b" -> 次數
     history: [],          // [{ round, courts:[{teamA:[ids],teamB:[ids]}], resting:[ids] }]
-    showRest: false       // 是否顯示/複製每輪休息名單
+    showRest: false,      // 是否顯示/複製每輪休息名單
+    mode: "single",       // "single" 單面網(預排賽程) | "multi" 多面網(即時派場)
+    multi: {              // 多面網模式狀態
+      courts: [],         // 每面網:null(空閒)或 { seq, players:[ids], teamA:[ids], teamB:[ids] }
+      log: [],            // 已完成場次 [{ seq, court, teamA, teamB }]
+      gameSeq: 0,         // 已開始過的場次總數(用來算等待量)
+      lastSeq: {}         // id -> 上次上場時的 gameSeq
+    }
   };
   var nextId = 1;
 
@@ -299,70 +376,98 @@
     return arr;
   }
 
-  // ---------- 核心:產生一輪(不負責畫面) ----------
-  // 回傳 true 表示成功,false 表示人數不足
-  function generateOne() {
-    var W = {
+  // ---------- 共用小工具 ----------
+  function readWeights() {
+    return {
       w5: +document.getElementById("w5").value,
       w2: +document.getElementById("w2").value,
       w3: +document.getElementById("w3").value,
       w4: +document.getElementById("w4").value
     };
-    var courts = Math.max(1, +document.getElementById("courts").value);
-    var teamSize = Math.max(1, +document.getElementById("teamSize").value);
+  }
+  function teamSizeVal() { return Math.max(1, +document.getElementById("teamSize").value); }
+  function courtsVal() { return Math.max(1, +document.getElementById("courts").value); }
+  function activeIds() {
+    return state.players.filter(function (p) { return p.active; }).map(function (p) { return p.id; });
+  }
+
+  // ---------- 共用:挑出「一場」要上的人 ----------
+  // 從 pool 中挑 count 人(被挑中者會就地從 pool 移除)。
+  //
+  // 上場次數少的人「絕對優先」(硬性規則),確保每人場數維持平衡。
+  // 上場次數相同的人之間,才用分數決定:
+  //   score = 與本場已選之人的同場次數 * W5 - 等待量 * W2
+  // 加入「同場次數」這一項很關鍵:若只看場數與等待量,人數剛好是每輪
+  // 上場人數的整數倍時(如 8 人 1 場),兩批人的場數與等待量會永遠同步,
+  // 分數永無平手,導致兩批人鎖死交替、彼此永遠不會同場。
+  function pickGroup(pool, count, W, waitOf) {
+    var group = [];
+    for (var k = 0; k < count; k++) {
+      var minPlay = Infinity;
+      pool.forEach(function (x) {
+        var v = get(state.playCount, x);
+        if (v < minPlay) minPlay = v;
+      });
+      var best = null, bestScore = Infinity;
+      pool.forEach(function (x) {
+        if (get(state.playCount, x) !== minPlay) return;
+        var met = 0;
+        group.forEach(function (y) {
+          met += get(state.partner, key(x, y)) + get(state.opponent, key(x, y));
+        });
+        var score = met * W.w5 - waitOf(x) * W.w2;
+        if (score < bestScore) { bestScore = score; best = x; }
+      });
+      group.push(best);
+      pool.splice(pool.indexOf(best), 1);
+    }
+    return group;
+  }
+
+  // 記錄一場的搭檔 / 對手次數
+  function applyPairCounters(teamA, teamB) {
+    [teamA, teamB].forEach(function (t) {
+      combinations(t, 2).forEach(function (pr) {
+        state.partner[key(pr[0], pr[1])] = get(state.partner, key(pr[0], pr[1])) + 1;
+      });
+    });
+    teamA.forEach(function (a) {
+      teamB.forEach(function (b) {
+        state.opponent[key(a, b)] = get(state.opponent, key(a, b)) + 1;
+      });
+    });
+  }
+
+  // ---------- 單面網模式:產生一輪(不負責畫面) ----------
+  // 回傳 true 表示成功,false 表示人數不足
+  function generateOne() {
+    var W = readWeights();
+    var teamSize = teamSizeVal();
     var perCourt = teamSize * 2;
 
-    var active = state.players.filter(function (p) { return p.active; }).map(function (p) { return p.id; });
-    if (active.length < perCourt) {
-      return false;
-    }
+    var active = activeIds();
+    if (active.length < perCourt) return false;
 
     // 實際可開的場地數(受人數限制)
     var maxCourts = Math.floor(active.length / perCourt);
-    var useCourts = Math.min(courts, maxCourts);
-    var needPlayers = useCourts * perCourt;
+    var useCourts = Math.min(courtsVal(), maxCourts);
 
-    // Step 1+2:逐場、逐個挑人上場,然後於每場分隊
-    //
-    // 上場次數少的人「絕對優先」(硬性規則),確保每人場數維持平衡。
-    // 在上場次數相同的人之間,才用分數決定:
-    //   score = 與本場已選之人的同場次數 * W5 - 連續休息輪數 * W2
-    // 加入「同場次數」這一項很關鍵:若只看場數與休息數,人數剛好是每輪
-    // 上場人數的整數倍時(如 8 人 1 場),兩批人的場數與休息數會永遠同步,
-    // 分數永無平手,導致兩批人鎖死交替、彼此永遠不會同場。
     var remaining = active.slice();
     shuffle(remaining); // 打散,讓同分的人隨機
 
     var courtsResult = [];
     var playing = [];
     for (var c = 0; c < useCourts; c++) {
-      var group = [];
-      for (var k = 0; k < perCourt; k++) {
-        // 硬性:只從目前上場次數最少的人裡面挑
-        var minPlay = Infinity;
-        remaining.forEach(function (x) {
-          var v = get(state.playCount, x);
-          if (v < minPlay) minPlay = v;
-        });
-        var best = null, bestScore = Infinity;
-        remaining.forEach(function (x) {
-          if (get(state.playCount, x) !== minPlay) return;
-          var met = 0;
-          group.forEach(function (y) {
-            met += get(state.partner, key(x, y)) + get(state.opponent, key(x, y));
-          });
-          var score = met * W.w5 - get(state.restStreak, x) * W.w2;
-          if (score < bestScore) { bestScore = score; best = x; }
-        });
-        group.push(best);
-        remaining.splice(remaining.indexOf(best), 1);
-      }
+      // 單面網模式的「等待量」= 連續休息輪數
+      var group = pickGroup(remaining, perCourt, W, function (x) {
+        return get(state.restStreak, x);
+      });
       playing = playing.concat(group);
       courtsResult.push(bestSplit(group, teamSize, W));
     }
     var resting = remaining;
 
-    // Step 3:更新統計
+    // 更新統計
     playing.forEach(function (id) {
       state.playCount[id] = get(state.playCount, id) + 1;
       state.restStreak[id] = 0;
@@ -371,24 +476,117 @@
       state.restStreak[id] = get(state.restStreak, id) + 1;
       state.restCount[id] = get(state.restCount, id) + 1;
     });
-    courtsResult.forEach(function (ct) {
-      // 搭檔
-      [ct.teamA, ct.teamB].forEach(function (t) {
-        combinations(t, 2).forEach(function (pr) {
-          state.partner[key(pr[0], pr[1])] = get(state.partner, key(pr[0], pr[1])) + 1;
-        });
-      });
-      // 對手
-      ct.teamA.forEach(function (a) {
-        ct.teamB.forEach(function (b) {
-          state.opponent[key(a, b)] = get(state.opponent, key(a, b)) + 1;
-        });
-      });
-    });
+    courtsResult.forEach(function (ct) { applyPairCounters(ct.teamA, ct.teamB); });
 
     state.round++;
     state.history.push({ round: state.round, courts: courtsResult, resting: resting });
     return true;
+  }
+
+  // ---------- 多面網模式:即時派場 ----------
+  // 關鍵:每次派場只從「當下沒在任何場地上的人」挑,所以永遠不會排到
+  // 還在別面網比賽中的人 —— 各面網可以各自獨立結束、不必同步。
+  function busyIds() {
+    var busy = {};
+    state.multi.courts.forEach(function (ct) {
+      if (ct) ct.players.forEach(function (p) { busy[p] = true; });
+    });
+    return busy;
+  }
+  function freeIds() {
+    var busy = busyIds();
+    return activeIds().filter(function (id) { return !busy[id]; });
+  }
+  // 等待量:自上次上場後,場上已開始過幾場
+  function waitOf(id) {
+    var last = state.multi.lastSeq[id];
+    return state.multi.gameSeq - (typeof last === "number" ? last : 0);
+  }
+
+  // 為某面網派一場新的。回傳 true 成功、false 表示空閒人數不足
+  function startGame(courtIndex) {
+    var W = readWeights();
+    var teamSize = teamSizeVal();
+    var perCourt = teamSize * 2;
+    var pool = freeIds();
+    if (pool.length < perCourt) return false;
+
+    shuffle(pool);
+    var group = pickGroup(pool, perCourt, W, waitOf);
+    var split = bestSplit(group, teamSize, W);
+
+    state.multi.gameSeq++;
+    // 統計在「開始比賽」時就記錄,這樣其他場地馬上就知道這些人已上場
+    var prevSeq = {};   // 保留還原點,供「重抽」使用
+    group.forEach(function (id) {
+      if (typeof state.multi.lastSeq[id] === "number") prevSeq[id] = state.multi.lastSeq[id];
+      state.playCount[id] = get(state.playCount, id) + 1;
+      state.multi.lastSeq[id] = state.multi.gameSeq;
+    });
+    applyPairCounters(split.teamA, split.teamB);
+
+    state.multi.courts[courtIndex] = {
+      seq: state.multi.gameSeq,
+      players: group,
+      teamA: split.teamA,
+      teamB: split.teamB,
+      prevSeq: prevSeq
+    };
+    return true;
+  }
+
+  // 還原某場已記錄的統計(用於「重抽」:該場不算數)
+  function undoGameCounters(ct) {
+    ct.players.forEach(function (id) {
+      state.playCount[id] = Math.max(0, get(state.playCount, id) - 1);
+      if (ct.prevSeq && typeof ct.prevSeq[id] === "number") state.multi.lastSeq[id] = ct.prevSeq[id];
+      else delete state.multi.lastSeq[id];
+    });
+    [ct.teamA, ct.teamB].forEach(function (t) {
+      combinations(t, 2).forEach(function (pr) {
+        state.partner[key(pr[0], pr[1])] = Math.max(0, get(state.partner, key(pr[0], pr[1])) - 1);
+      });
+    });
+    ct.teamA.forEach(function (a) {
+      ct.teamB.forEach(function (b) {
+        state.opponent[key(a, b)] = Math.max(0, get(state.opponent, key(a, b)) - 1);
+      });
+    });
+    if (state.multi.gameSeq === ct.seq) state.multi.gameSeq--;
+  }
+
+  // 結束某面網目前的比賽(移入已完成紀錄)
+  function endGame(courtIndex) {
+    var ct = state.multi.courts[courtIndex];
+    if (!ct) return;
+    state.multi.log.push({ seq: ct.seq, court: courtIndex, teamA: ct.teamA, teamB: ct.teamB });
+    state.multi.courts[courtIndex] = null;
+  }
+
+  // 打完了:結束這場並立刻排下一場
+  function finishAndNext(courtIndex) {
+    var extra = courtIndex >= courtsVal();   // 這面網已被縮減掉,打完就移除、不再派場
+    endGame(courtIndex);
+    var ok = extra ? true : startGame(courtIndex);
+    syncMultiCourts();
+    save();
+    renderMulti();
+    renderStats();
+    if (!ok) {
+      var need = teamSizeVal() * 2;
+      alert("已結束這場,但目前空閒人數不足 " + need + " 人,無法排下一場。\n等其他場地打完,或新增玩家後再按「開始」。");
+    }
+  }
+
+  // 讓場地數設定與實際場地卡同步。
+  // 縮減場地時「只收掉空閒的」——進行中的比賽保留到打完為止,
+  // 才不會把正在打的球中斷掉、或讓那場的紀錄憑空消失。
+  function syncMultiCourts() {
+    var n = courtsVal();
+    while (state.multi.courts.length < n) state.multi.courts.push(null);
+    for (var i = state.multi.courts.length - 1; i >= n; i--) {
+      if (!state.multi.courts[i]) state.multi.courts.splice(i, 1);
+    }
   }
 
   // 產生 n 輪並更新畫面
@@ -472,6 +670,7 @@
       box.appendChild(chip);
     });
     renderCourtHint();
+    if (state.mode === "multi") renderMulti();   // 名單變動要更新等待名單
   }
 
   function renderSchedule() {
@@ -506,6 +705,100 @@
     });
   }
 
+  // ---------- 多面網模式:畫面 ----------
+  function renderMulti() {
+    var perCourt = teamSizeVal() * 2;
+    var nCourts = courtsVal();
+    var free = freeIds();
+
+    // 場地卡
+    var box = document.getElementById("multiCourts");
+    box.innerHTML = "";
+    state.multi.courts.forEach(function (ct, i) {
+      var div = document.createElement("div");
+      div.className = "net" + (ct ? "" : " idle");
+      var extra = i >= nCourts;   // 場地數被調小,但這面網還在打
+      var head = '<div class="net-head"><span class="net-name">🏟 第 ' + (i + 1) + ' 面網</span>' +
+        (ct ? '<span class="net-tag live">● 進行中(第 ' + ct.seq + ' 場)</span>'
+            : '<span class="net-tag">空閒</span>') + '</div>';
+      var body;
+      if (ct) {
+        body = (extra ? '<p class="hint" style="margin:0 0 6px;color:var(--rest)">⚠️ 場地數已調小,這場打完後這面網會自動移除。</p>' : '') +
+          '<div class="matchup">' +
+          '<div class="team a"><span class="pill">' + ct.teamA.map(nameOf).join(" 、 ") + '</span></div>' +
+          '<span class="vs">VS</span>' +
+          '<div class="team b"><span class="pill">' + ct.teamB.map(nameOf).join(" 、 ") + '</span></div>' +
+          '</div>' +
+          '<div class="net-actions">' +
+            '<button class="primary" data-act="finish" data-court="' + i + '">' +
+              (extra ? "✔ 打完了" : "✔ 打完了,排下一場") + '</button>' +
+            (extra ? '' : '<button class="ghost" data-act="end" data-court="' + i + '">只結束</button>') +
+            '<button class="ghost" data-act="redraw" data-court="' + i + '">🎲 重抽</button>' +
+          '</div>';
+      } else {
+        var lack = free.length < perCourt;
+        body = '<p class="hint" style="margin:0 0 4px;">' +
+          (lack ? '⚠️ 空閒人數不足(需 ' + perCourt + ' 人,現有 ' + free.length + ' 人)'
+                : '可開打,空閒 ' + free.length + ' 人') + '</p>' +
+          '<div class="net-actions">' +
+            '<button class="blue" data-act="start" data-court="' + i + '"' + (lack ? " disabled" : "") + '>▶ 開始</button>' +
+          '</div>';
+      }
+      div.innerHTML = head + body;
+      box.appendChild(div);
+    });
+
+    // 等待名單(依等待久排序)
+    var wl = document.getElementById("waitList");
+    document.getElementById("waitCount").textContent = free.length;
+    if (free.length === 0) {
+      wl.innerHTML = '<p class="empty">所有人都在場上。</p>';
+    } else {
+      var sorted = free.slice().sort(function (a, b) {
+        var d = waitOf(b) - waitOf(a);
+        return d !== 0 ? d : get(state.playCount, a) - get(state.playCount, b);
+      });
+      wl.innerHTML = sorted.map(function (id) {
+        var w = waitOf(id);
+        var never = typeof state.multi.lastSeq[id] !== "number";
+        return '<span class="wait-chip' + (w >= 3 ? ' long' : '') + '">' + nameOf(id) +
+          ' <b>' + (never ? "還沒上場" : "等 " + w + " 場") + '</b>' +
+          ' <span style="color:var(--muted);font-size:.78rem">共 ' + get(state.playCount, id) + ' 場</span></span>';
+      }).join("");
+    }
+
+    // 已完成紀錄(新到舊)
+    var lg = document.getElementById("multiLog");
+    document.getElementById("doneCount").textContent = state.multi.log.length;
+    if (state.multi.log.length === 0) {
+      lg.innerHTML = '<p class="empty">還沒有完成的場次。</p>';
+    } else {
+      lg.innerHTML = state.multi.log.slice().reverse().map(function (g) {
+        return '<div class="log-line"><span class="log-seq">第' + g.seq + '場</span>' +
+          '<span>' + g.teamA.map(nameOf).join("、") + ' <span class="vs">vs</span> ' +
+          g.teamB.map(nameOf).join("、") + '</span>' +
+          '<span class="log-seq" style="margin-left:auto">網' + (g.court + 1) + '</span></div>';
+      }).join("");
+    }
+  }
+
+  // 切換模式:顯示對應區塊
+  function applyMode() {
+    var multi = state.mode === "multi";
+    document.getElementById("multiUI").style.display = multi ? "" : "none";
+    document.getElementById("singleUI").style.display = multi ? "none" : "";
+    document.getElementById("modeSingleBtn").className = "mode-btn" + (multi ? "" : " on");
+    document.getElementById("modeMultiBtn").className = "mode-btn" + (multi ? " on" : "");
+    // 休息名單開關只影響單面網的賽程表
+    document.querySelector(".check").style.display = multi ? "none" : "";
+    document.getElementById("modeHint").innerHTML = multi
+      ? "多面網:各面網獨立進行。哪面網先打完就按那面網的按鈕,系統只會從<b>當下沒在場上的人</b>裡面挑,不會排到還在別網比賽的人。"
+      : "單面網:一次預先排好整場賽程表,適合只有一面網、大家輪流上場。";
+    renderCourtHint();
+    if (multi) { syncMultiCourts(); save(); renderMulti(); } else renderSchedule();
+    renderStats();
+  }
+
   function renderCourtHint() {
     var el = document.getElementById("courtHint");
     if (!el) return;
@@ -520,6 +813,23 @@
       el.style.color = "var(--rest)";
       return;
     }
+    // 多面網模式是即時派場、沒有「輪」的概念,提示內容不同
+    if (state.mode === "multi") {
+      recRounds = 0;
+      var canOpen = Math.min(setCourts, maxCourts);
+      var t = "目前 " + active + " 人、設定 <b>" + setCourts + "</b> 面網 → 同時最多 " +
+        (canOpen * perCourt) + " 人在場、" + (active - canOpen * perCourt) + " 人等待。";
+      if (canOpen < setCourts) {
+        t += " (人數只夠同時開 " + maxCourts + " 面網。)";
+        el.style.color = "var(--rest)";
+      } else {
+        el.style.color = "var(--muted)";
+      }
+      t += "<br>🤝 每面網打完各自按按鈕即可,系統自動從空閒的人裡挑,場數會自動平衡。";
+      el.innerHTML = t;
+      return;
+    }
+
     var use = Math.min(setCourts, maxCourts);
     var P = use * perCourt;          // 每輪實際上場人數
     var rest = active - P;
@@ -563,7 +873,12 @@
     var ps = state.players.slice();
     if (ps.length === 0) { box.innerHTML = '<p class="empty">尚無資料。</p>'; return; }
     ps.sort(function (a, b) { return get(state.playCount, b.id) - get(state.playCount, a.id); });
-    var html = '<table><thead><tr><th class="name">玩家</th><th>上場</th><th>休息</th><th>連休</th><th>不同搭檔</th><th>不同對手</th></tr></thead><tbody>';
+    // 「休息 / 連休」是單面網「輪」的概念;多面網改顯示「狀態 / 等待」
+    var multi = state.mode === "multi";
+    var busy = multi ? busyIds() : {};
+    var html = '<table><thead><tr><th class="name">玩家</th><th>上場</th>' +
+      (multi ? '<th>狀態</th><th>等待</th>' : '<th>休息</th><th>連休</th>') +
+      '<th>不同搭檔</th><th>不同對手</th></tr></thead><tbody>';
     ps.forEach(function (p) {
       var partners = 0, opps = 0;
       Object.keys(state.partner).forEach(function (k) {
@@ -572,10 +887,17 @@
       Object.keys(state.opponent).forEach(function (k) {
         if (state.opponent[k] > 0 && k.split("|").indexOf(String(p.id)) >= 0) opps++;
       });
+      var mid;
+      if (multi) {
+        var onCourt = !!busy[p.id];
+        mid = '<td>' + (onCourt ? '<span style="color:var(--accent)">場上</span>' : '等待') + '</td>' +
+          '<td>' + (onCourt ? "-" : waitOf(p.id)) + '</td>';
+      } else {
+        mid = '<td>' + get(state.restCount, p.id) + '</td>' +
+          '<td>' + get(state.restStreak, p.id) + '</td>';
+      }
       html += '<tr><td class="name">' + p.name + (p.active ? "" : " <span style=\"color:var(--muted);font-size:.75rem\">(暫停)</span>") + '</td>' +
-        '<td>' + get(state.playCount, p.id) + '</td>' +
-        '<td>' + get(state.restCount, p.id) + '</td>' +
-        '<td>' + get(state.restStreak, p.id) + '</td>' +
+        '<td>' + get(state.playCount, p.id) + '</td>' + mid +
         '<td>' + partners + '</td>' +
         '<td>' + opps + '</td></tr>';
     });
@@ -604,19 +926,53 @@
     return lines.join("\n");
   }
 
-  function copyAll() {
-    var text = buildScheduleText();
-    if (!text) { alert("還沒有任何賽程可以複製,請先產生輪次。"); return; }
-    var btn = document.getElementById("copyBtn");
+  // 多面網:已完成場次 + 進行中
+  function buildMultiText() {
+    var m = state.multi;
+    var live = m.courts.filter(function (c) { return c; });
+    if (m.log.length === 0 && live.length === 0) return "";
+    var lines = ["🏸 羽球配對(多面網,已完成 " + m.log.length + " 場)"];
+    if (m.log.length) {
+      lines.push("");
+      m.log.forEach(function (g) {
+        lines.push("第" + g.seq + "場 [網" + (g.court + 1) + "] " +
+          g.teamA.map(nameOf).join("、") + " vs " + g.teamB.map(nameOf).join("、"));
+      });
+    }
+    if (live.length) {
+      lines.push("");
+      lines.push("▶ 進行中:");
+      m.courts.forEach(function (ct, i) {
+        if (!ct) return;
+        lines.push("[網" + (i + 1) + "] " + ct.teamA.map(nameOf).join("、") +
+          " vs " + ct.teamB.map(nameOf).join("、"));
+      });
+    }
+    return lines.join("\n");
+  }
+
+  // 複製文字到剪貼簿,並在按鈕上給回饋
+  function copyText(text, btn, label, emptyMsg) {
+    if (!text) { alert(emptyMsg); return; }
     var done = function (ok) {
       btn.textContent = ok ? "✓ 已複製!" : "✗ 複製失敗";
-      setTimeout(function () { btn.textContent = "📋 複製整場文字"; }, 1800);
+      setTimeout(function () { btn.textContent = label; }, 1800);
     };
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { done(true); }, function () { fallbackCopy(text, done); });
     } else {
       fallbackCopy(text, done);
     }
+  }
+
+  function copyAll() {
+    copyText(buildScheduleText(), document.getElementById("copyBtn"),
+      "📋 複製整場文字", "還沒有任何賽程可以複製,請先產生輪次。");
+  }
+
+  function copyMulti() {
+    copyText(buildMultiText(), document.getElementById("copyMultiBtn"),
+      "📋 複製紀錄文字", "還沒有任何場次紀錄可以複製。");
   }
 
   function fallbackCopy(text, done) {
@@ -656,32 +1012,32 @@
   }
 
   function removePlayer(id) {
+    // 正在場上比賽的人不能直接刪除,否則該場會少人、紀錄也會出現「?」
+    if (busyIds()[id]) {
+      alert(nameOf(id) + " 正在場上比賽中,請先按該面網的「只結束」或「打完了」再刪除。");
+      return;
+    }
     state.players = state.players.filter(function (p) { return p.id !== id; });
     save();
     renderPlayers();
     renderStats();
   }
 
-  // 清空所有玩家(連同賽程與統計一起清除)
+  // 清空所有玩家(連同賽程、場次紀錄與統計一起清除)
   function clearAllPlayers() {
     if (state.players.length === 0) return;
-    if (!confirm("確定要清空全部 " + state.players.length + " 位玩家嗎?\n賽程與統計也會一起清除,此動作無法復原。")) return;
+    if (!confirm("確定要清空全部 " + state.players.length + " 位玩家嗎?\n賽程、場次紀錄與統計也會一起清除,此動作無法復原。")) return;
     state.players = [];
-    state.round = 0;
-    state.playCount = {};
-    state.restStreak = {};
-    state.restCount = {};
-    state.partner = {};
-    state.opponent = {};
-    state.history = [];
+    clearAllProgress();
     save();
     renderPlayers();
     renderSchedule();
+    renderMulti();
     renderStats();
   }
 
-  function resetAll() {
-    if (!confirm("確定要清除所有輪次與統計?(玩家名單保留)")) return;
+  // 清掉所有進度(兩個模式的賽程與統計),玩家名單不動
+  function clearAllProgress() {
     state.round = 0;
     state.playCount = {};
     state.restStreak = {};
@@ -689,8 +1045,27 @@
     state.partner = {};
     state.opponent = {};
     state.history = [];
+    state.multi.courts = [];
+    state.multi.log = [];
+    state.multi.gameSeq = 0;
+    state.multi.lastSeq = {};
+  }
+
+  function resetAll() {
+    if (!confirm("確定要清除所有輪次、場次紀錄與統計?(玩家名單保留)")) return;
+    clearAllProgress();
     save();
     renderSchedule();
+    renderMulti();
+    renderStats();
+  }
+
+  // 多面網:只清除場次紀錄與統計(玩家保留)
+  function resetMulti() {
+    if (!confirm("確定要清除多面網的場次紀錄與統計?\n進行中的比賽也會一併結束。(玩家名單保留)")) return;
+    clearAllProgress();
+    save();
+    renderMulti();
     renderStats();
   }
 
@@ -750,13 +1125,61 @@
   document.getElementById("copyBtn").onclick = copyAll;
   document.getElementById("resetRoundBtn").onclick = resetRound;
   document.getElementById("resetAllBtn").onclick = resetAll;
-  document.getElementById("courts").addEventListener("input", renderCourtHint);
-  document.getElementById("teamSize").addEventListener("input", renderCourtHint);
   document.getElementById("showRest").addEventListener("change", function () {
     state.showRest = this.checked;
     save();
     renderSchedule();
   });
+
+  // 模式切換
+  function setMode(m) {
+    state.mode = m;
+    recMultiplier = 0;
+    document.getElementById("recBtn").textContent = "🎯 建議";
+    save();
+    applyMode();
+  }
+  document.getElementById("modeSingleBtn").onclick = function () { setMode("single"); };
+  document.getElementById("modeMultiBtn").onclick = function () { setMode("multi"); };
+
+  // 設定變動:兩個模式的提示與畫面都要更新
+  function onSettingChange() {
+    renderCourtHint();
+    if (state.mode === "multi") { syncMultiCourts(); save(); renderMulti(); }
+  }
+  document.getElementById("courts").addEventListener("input", onSettingChange);
+  document.getElementById("teamSize").addEventListener("input", onSettingChange);
+
+  // 多面網:場地卡上的按鈕(事件委派,因為卡片是動態產生的)
+  document.getElementById("multiCourts").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-act]");
+    if (!btn || btn.disabled) return;
+    var i = +btn.getAttribute("data-court");
+    var act = btn.getAttribute("data-act");
+    if (act === "start") {
+      if (!startGame(i)) {
+        alert("空閒人數不足,無法開始。等其他場地打完,或新增玩家。");
+        return;
+      }
+      save(); renderMulti(); renderStats();
+    } else if (act === "finish") {
+      finishAndNext(i);
+    } else if (act === "end") {
+      endGame(i);
+      syncMultiCourts();
+      save(); renderMulti(); renderStats();
+    } else if (act === "redraw") {
+      // 重抽:取消這場(不計入紀錄)、還原統計,再重新派一場
+      var ct = state.multi.courts[i];
+      if (!ct) return;
+      undoGameCounters(ct);
+      state.multi.courts[i] = null;
+      if (!startGame(i)) alert("目前空閒人數不足,無法重抽。");
+      save(); renderMulti(); renderStats();
+    }
+  });
+  document.getElementById("copyMultiBtn").onclick = copyMulti;
+  document.getElementById("resetMultiBtn").onclick = resetMulti;
 
   // ---------- 啟動 ----------
   var hadSaved = load();
@@ -767,13 +1190,18 @@
     });
     save();
   }
-  // 舊資料相容:若無 history 欄位則補上
+  // 舊資料相容:補上後來新增的欄位
   if (!state.history) state.history = [];
   if (typeof state.showRest !== "boolean") state.showRest = false;
+  if (state.mode !== "multi" && state.mode !== "single") state.mode = "single";
+  if (!state.multi) state.multi = { courts: [], log: [], gameSeq: 0, lastSeq: {} };
+  if (!state.multi.courts) state.multi.courts = [];
+  if (!state.multi.log) state.multi.log = [];
+  if (typeof state.multi.gameSeq !== "number") state.multi.gameSeq = 0;
+  if (!state.multi.lastSeq) state.multi.lastSeq = {};
   document.getElementById("showRest").checked = state.showRest;
   renderPlayers();
-  renderSchedule();
-  renderStats();
+  applyMode();   // 依模式顯示對應畫面(內含 renderSchedule / renderMulti / renderStats)
 })();
 
 // 註冊 Service Worker(需在 http(s) 環境下才生效;file:// 會略過)

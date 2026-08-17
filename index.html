@@ -169,8 +169,8 @@
       </div>
       <div class="weights">
         <div class="field">
-          <label>上場次數平衡 (W1)</label>
-          <input type="number" id="w1" value="10" min="0">
+          <label>避免同場重複 (W5)</label>
+          <input type="number" id="w5" value="8" min="0">
         </div>
         <div class="field">
           <label>連續休息優先 (W2)</label>
@@ -185,7 +185,8 @@
           <input type="number" id="w4" value="2" min="0">
         </div>
       </div>
-      <p class="hint">數值越大代表越重視該項。改完下一輪生效。</p>
+      <p class="hint">數值越大代表越重視該項。改完下一輪生效。<br>
+        上場次數一律優先平衡(不可調);W5 決定在上場次數相同的人之間,多努力去湊沒同場過的人。</p>
     </details>
   </div>
 
@@ -302,7 +303,7 @@
   // 回傳 true 表示成功,false 表示人數不足
   function generateOne() {
     var W = {
-      w1: +document.getElementById("w1").value,
+      w5: +document.getElementById("w5").value,
       w2: +document.getElementById("w2").value,
       w3: +document.getElementById("w3").value,
       w4: +document.getElementById("w4").value
@@ -321,27 +322,45 @@
     var useCourts = Math.min(courts, maxCourts);
     var needPlayers = useCourts * perCourt;
 
-    // Step 1:依 restScore 選出要上場的人(分數越低越優先上場)
-    // restScore = playCount*W1 - restStreak*W2   → 打越少、休越久 分數越低
-    var pool = active.slice();
-    shuffle(pool); // 先打散,讓同分的人隨機
-    pool.sort(function (a, b) {
-      var sa = get(state.playCount, a) * W.w1 - get(state.restStreak, a) * W.w2;
-      var sb = get(state.playCount, b) * W.w1 - get(state.restStreak, b) * W.w2;
-      return sa - sb;
-    });
-    var playing = pool.slice(0, needPlayers);
-    var resting = pool.slice(needPlayers);
+    // Step 1+2:逐場、逐個挑人上場,然後於每場分隊
+    //
+    // 上場次數少的人「絕對優先」(硬性規則),確保每人場數維持平衡。
+    // 在上場次數相同的人之間,才用分數決定:
+    //   score = 與本場已選之人的同場次數 * W5 - 連續休息輪數 * W2
+    // 加入「同場次數」這一項很關鍵:若只看場數與休息數,人數剛好是每輪
+    // 上場人數的整數倍時(如 8 人 1 場),兩批人的場數與休息數會永遠同步,
+    // 分數永無平手,導致兩批人鎖死交替、彼此永遠不會同場。
+    var remaining = active.slice();
+    shuffle(remaining); // 打散,讓同分的人隨機
 
-    // Step 2:把上場的人平均分到各場地,再於每場分隊
-    // 為了讓各場強弱不特別偏,直接依序切;分隊時最小化重複度
-    shuffle(playing);
     var courtsResult = [];
+    var playing = [];
     for (var c = 0; c < useCourts; c++) {
-      var group = playing.slice(c * perCourt, (c + 1) * perCourt);
-      var split = bestSplit(group, teamSize, W);
-      courtsResult.push(split);
+      var group = [];
+      for (var k = 0; k < perCourt; k++) {
+        // 硬性:只從目前上場次數最少的人裡面挑
+        var minPlay = Infinity;
+        remaining.forEach(function (x) {
+          var v = get(state.playCount, x);
+          if (v < minPlay) minPlay = v;
+        });
+        var best = null, bestScore = Infinity;
+        remaining.forEach(function (x) {
+          if (get(state.playCount, x) !== minPlay) return;
+          var met = 0;
+          group.forEach(function (y) {
+            met += get(state.partner, key(x, y)) + get(state.opponent, key(x, y));
+          });
+          var score = met * W.w5 - get(state.restStreak, x) * W.w2;
+          if (score < bestScore) { bestScore = score; best = x; }
+        });
+        group.push(best);
+        remaining.splice(remaining.indexOf(best), 1);
+      }
+      playing = playing.concat(group);
+      courtsResult.push(bestSplit(group, teamSize, W));
     }
+    var resting = remaining;
 
     // Step 3:更新統計
     playing.forEach(function (id) {

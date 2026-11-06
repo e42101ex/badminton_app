@@ -105,6 +105,18 @@
     background: var(--card2); border: 1px solid var(--line);
     border-radius: 10px; padding: 7px 10px; margin-bottom: 5px;
   }
+  .courts-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 5px; }
+  .courts-row .court { flex: 1 1 220px; margin-bottom: 0; }
+  /* 場地卡固定四等分:A 隊上排兩格、VS、B 隊下排兩格(一律 2 打 2) */
+  .courts-row .matchup, #multiCourts .matchup { flex-direction: column; align-items: stretch; gap: 4px; }
+  .courts-row .team, #multiCourts .team {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: none; min-width: 0; width: 100%;
+  }
+  .courts-row .vs, #multiCourts .vs { text-align: center; }
+  .courts-row .pill, #multiCourts .pill {
+    text-align: center; padding: 8px 4px; min-width: 0; overflow-wrap: anywhere;
+  }
+  .courts-row .court .label { text-align: center; }
   .court .label { font-size: .72rem; color: var(--muted); margin-bottom: 4px; letter-spacing: .04em; }
   .matchup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .team { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 110px; }
@@ -112,6 +124,14 @@
     background: #142b1f; border: 1px solid #2b5c3f; color: var(--accent);
     padding: 4px 11px; border-radius: 8px; font-weight: 600; font-size: .92rem;
   }
+  .pill.pick { cursor: pointer; user-select: none; }
+  .pill.pick.sel { outline: 2px solid var(--rest); }
+  .swap-box { margin-top: 8px; padding: 8px; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; text-align: center; }
+  .swap-box .hint { margin: 0 0 6px; }
+  .swap-chip { display: inline-block; margin: 2px; padding: 4px 10px; border-radius: 8px; cursor: pointer;
+    background: var(--card2); border: 1px solid var(--line); font-size: .88rem; }
+  .swap-chip small { color: var(--muted); }
   .team.b .pill { background: #0e2634; border-color: #1f5069; color: var(--accent2); }
   .vs { color: var(--muted); font-weight: 700; font-size: .82rem; }
   .rest-line { margin-top: 3px; font-size: .82rem; color: var(--rest); }
@@ -142,12 +162,28 @@
     background: var(--accent2); border-color: var(--accent2);
     color: #052738;
   }
+  /* 按下時發光(搭配手機振動) */
+  @keyframes tapGlow {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,.9), 0 0 14px 4px rgba(120,220,255,.9); filter: brightness(1.5); }
+    100% { box-shadow: 0 0 0 10px rgba(255,255,255,0), 0 0 0 0 rgba(120,220,255,0); filter: brightness(1); }
+  }
+  .tap-glow { animation: tapGlow .45s ease-out; }
+  button:not(:disabled):active, .pill.pick:active, .swap-chip:active, .toggle:active {
+    box-shadow: 0 0 14px 4px rgba(120,220,255,.85); filter: brightness(1.4);
+  }
+  /* 賽程表、場地狀況:用偏綠底色與其他區塊區隔,方便一眼找到 */
+  .card.focus-card { background: #1f1a33; border-color: #4a3d7a; }
+  .focus-card .court, .focus-card .net { background: #2a2347; border-color: #4a3d7a; }
+  .focus-card .swap-box { background: #1f1a33; }
   /* 多面網:場地卡 */
   .net {
     background: var(--card2); border: 1px solid var(--line);
     border-radius: 12px; padding: 12px; margin-bottom: 10px;
   }
   .net.idle { border-style: dashed; }
+  #multiCourts { display: flex; flex-wrap: wrap; gap: 10px; }
+  #multiCourts .net { flex: 1 1 220px; margin-bottom: 0; }
+  #multiCourts .net-actions { justify-content: center; }
   .net-head {
     display: flex; justify-content: space-between; align-items: center;
     gap: 8px; margin-bottom: 8px;
@@ -237,8 +273,11 @@
 
   <!-- ===== 多面網模式 ===== -->
   <div id="multiUI">
-    <div class="card">
+    <div class="card focus-card">
       <h2>場地狀況</h2>
+      <div class="toolbar" style="margin-bottom:12px;">
+        <button class="ghost" id="undoMultiBtn" disabled>↩ 返回上一步</button>
+      </div>
       <div id="multiCourts"></div>
     </div>
 
@@ -259,21 +298,26 @@
 
   <!-- ===== 單面網模式 ===== -->
   <div id="singleUI">
-  <div class="toolbar">
-    <button class="blue" id="nextBtn">▶ 產生下一輪</button>
+  <div class="toolbar" style="flex-direction:column;align-items:flex-start;">
+    <div class="row">
+      <button class="blue" id="nextBtn">▶ 產生下一輪</button>
+      <button class="ghost" id="undoRoundBtn">↩ 返回上一輪</button>
+      <button class="ghost" id="resetRoundBtn">重排最後一輪</button>
+    </div>
     <div class="row" style="gap:6px;">
       <button class="primary" id="manyBtn">產生</button>
       <input type="number" id="numRounds" min="1" max="50" value="6" style="width:60px;">
       <span style="color:var(--muted);font-size:.9rem;">輪</span>
       <button class="ghost" id="recBtn" title="填入建議的公平輪數">🎯 建議</button>
+      <button class="ghost" id="copyBtn">📋 複製整場文字</button>
     </div>
-    <button class="ghost" id="copyBtn">📋 複製整場文字</button>
-    <button class="ghost" id="resetRoundBtn">重排最後一輪</button>
-    <button class="ghost" id="resetAllBtn">全部重置</button>
+    <div class="row">
+      <button class="ghost" id="resetAllBtn">全部重置</button>
+    </div>
   </div>
 
   <!-- 賽程表 -->
-  <div class="card">
+  <div class="card focus-card">
     <h2>賽程表(共 <span class="round-no" id="roundNo">0</span> 輪)</h2>
     <div id="schedule"><p class="empty">按「產生下一輪」或「產生 N 輪」開始。</p></div>
   </div>
@@ -507,6 +551,71 @@
     return state.multi.gameSeq - (typeof last === "number" ? last : 0);
   }
 
+  // 返回上一步:每次「開始 / 打完了 / 只結束 / 重抽」前先存快照,按錯可還原
+  var undoStack = [];
+  function pushUndo() {
+    undoStack.push(JSON.stringify({
+      playCount: state.playCount, partner: state.partner, opponent: state.opponent,
+      multi: state.multi
+    }));
+    if (undoStack.length > 30) undoStack.shift();
+  }
+  function undoMulti() {
+    var snap = undoStack.pop();
+    if (!snap) return;
+    var o = JSON.parse(snap);
+    state.playCount = o.playCount; state.partner = o.partner;
+    state.opponent = o.opponent; state.multi = o.multi;
+    syncMultiCourts();
+    save(); renderMulti(); renderStats();
+  }
+
+  // ---------- 手動換人 ----------
+  var pickSel = null;   // { court, id }:目前被點選、準備換掉的玩家(不存檔)
+
+  // 還原 / 重新記錄一場的統計,但不動 gameSeq(換人不是新的一場)
+  function unapplyGame(ct) {
+    var gs = state.multi.gameSeq;
+    undoGameCounters(ct);
+    state.multi.gameSeq = gs;
+  }
+  function applyGame(ct) {
+    ct.prevSeq = {};
+    ct.players.forEach(function (id) {
+      if (typeof state.multi.lastSeq[id] === "number") ct.prevSeq[id] = state.multi.lastSeq[id];
+      state.playCount[id] = get(state.playCount, id) + 1;
+      state.multi.lastSeq[id] = ct.seq;
+    });
+    applyPairCounters(ct.teamA, ct.teamB);
+  }
+  function replaceIn(ct, from, to) {
+    [ct.players, ct.teamA, ct.teamB].forEach(function (arr) {
+      var k = arr.indexOf(from);
+      if (k >= 0) arr[k] = to;
+    });
+  }
+  // 把第 i 面網的 a 換成 b。b 可以是空閒者、同場的人(對調位置)、其他面網的人(互換)
+  function swapPlayers(i, a, b) {
+    var ct = state.multi.courts[i];
+    if (!ct || ct.players.indexOf(a) < 0) return;
+    var j = -1;
+    state.multi.courts.forEach(function (c, k) { if (c && c.players.indexOf(b) >= 0) j = k; });
+    pushUndo();
+    var other = (j >= 0 && j !== i) ? state.multi.courts[j] : null;
+    unapplyGame(ct);
+    if (other) unapplyGame(other);
+    if (j === i) {                       // 同一場:對調兩人位置(可能換隊)
+      replaceIn(ct, a, "__t");
+      replaceIn(ct, b, a);
+      replaceIn(ct, "__t", b);
+    } else {
+      replaceIn(ct, a, b);
+      if (other) replaceIn(other, b, a);
+    }
+    applyGame(ct);
+    if (other) applyGame(other);
+  }
+
   // 為某面網派一場新的。回傳 true 成功、false 表示空閒人數不足
   function startGame(courtIndex) {
     var W = readWeights();
@@ -567,18 +676,34 @@
     state.multi.courts[courtIndex] = null;
   }
 
-  // 打完了:結束這場並立刻排下一場
+  // 打完了:結束這場並排下一場。
+  // 成因:若其他面網都還在打,空閒的剛好就是剛下場的這四個人,
+  // 沒有任何選擇餘地,會永遠同一批人重打。所以這種情況先「讓這面網空著」,
+  // 等別的面網也打完,再從兩批人混合挑選(同時把其他空著的面網補上)。
   function finishAndNext(courtIndex) {
+    pushUndo();
+    var perCourt = teamSizeVal() * 2;
     var extra = courtIndex >= courtsVal();   // 這面網已被縮減掉,打完就移除、不再派場
     endGame(courtIndex);
-    var ok = extra ? true : startGame(courtIndex);
+    var ok = true, waiting = false;
+    if (!extra) {
+      var othersBusy = state.multi.courts.some(function (c, j) { return j !== courtIndex && c; });
+      if (othersBusy && freeIds().length === perCourt) {
+        waiting = true;   // 沒得選,先等別的面網
+      } else {
+        ok = startGame(courtIndex);
+        // 順便把其他空著的面網補上(此時空閒者已混合過)
+        for (var j = 0; ok && j < courtsVal() && j < state.multi.courts.length; j++) {
+          if (!state.multi.courts[j] && freeIds().length >= perCourt) startGame(j);
+        }
+      }
+    }
     syncMultiCourts();
     save();
     renderMulti();
     renderStats();
-    if (!ok) {
-      var need = teamSizeVal() * 2;
-      alert("已結束這場,但目前空閒人數不足 " + need + " 人,無法排下一場。\n等其他場地打完,或新增玩家後再按「開始」。");
+    if (!waiting && !ok) {
+      alert("已結束這場,但目前空閒人數不足 " + perCourt + " 人,無法排下一場。\n等其他場地打完,或新增玩家後再按「開始」。");
     }
   }
 
@@ -647,6 +772,15 @@
     renderStats();
   }
 
+  // 返回上一輪:移除最後一輪(按錯「產生下一輪」時補救),不重新產生
+  function undoRound() {
+    if (state.history.length === 0) return;
+    undoLast();
+    save();
+    renderSchedule();
+    renderStats();
+  }
+
   // ---------- 渲染 ----------
   function renderPlayers() {
     var box = document.getElementById("players");
@@ -677,6 +811,67 @@
     if (state.mode === "multi") renderMulti();   // 名單變動要更新等待名單
   }
 
+  // ---------- 單面網:手動換人 ----------
+  var pickSelS = null;   // { round, id }
+
+  function swapBoxS(rd, ct) {
+    if (!pickSelS || pickSelS.round !== rd.round) return "";
+    if (ct.teamA.indexOf(pickSelS.id) < 0 && ct.teamB.indexOf(pickSelS.id) < 0) return "";
+    var chips = [];
+    function chip(id, tag) {
+      chips.push('<span class="swap-chip" data-act="sswap" data-round="' + rd.round + '" data-pid="' +
+        pickSelS.id + '" data-with="' + id + '">' + nameOf(id) + ' <small>' + tag + '</small></span>');
+    }
+    rd.resting.forEach(function (id) { chip(id, "休息中"); });
+    rd.courts.forEach(function (c, k) {
+      c.teamA.concat(c.teamB).forEach(function (id) {
+        if (id === pickSelS.id) return;
+        chip(id, c === ct ? "對調" : "場地" + (k + 1));
+      });
+    });
+    return '<div class="swap-box"><p class="hint">要用誰換掉 <b>' + nameOf(pickSelS.id) + '</b>?(再點一次取消)</p>' +
+      chips.join("") + '</div>';
+  }
+
+  function pairsDelta(ct, d) {
+    [ct.teamA, ct.teamB].forEach(function (t) {
+      combinations(t, 2).forEach(function (pr) {
+        var k = key(pr[0], pr[1]);
+        state.partner[k] = Math.max(0, get(state.partner, k) + d);
+      });
+    });
+    ct.teamA.forEach(function (x) {
+      ct.teamB.forEach(function (y) {
+        var k = key(x, y);
+        state.opponent[k] = Math.max(0, get(state.opponent, k) + d);
+      });
+    });
+  }
+  function swapInRound(rd, a, b) {
+    var cs = rd.courts.filter(function (c) {
+      return c.teamA.indexOf(a) >= 0 || c.teamA.indexOf(b) >= 0 ||
+             c.teamB.indexOf(a) >= 0 || c.teamB.indexOf(b) >= 0;
+    });
+    cs.forEach(function (c) { pairsDelta(c, -1); });
+    var ri = rd.resting.indexOf(b);
+    var all = [];
+    cs.forEach(function (c) { all.push(c.teamA, c.teamB); });
+    all.forEach(function (arr) {
+      for (var k = 0; k < arr.length; k++) {
+        if (arr[k] === a) arr[k] = b;
+        else if (arr[k] === b) arr[k] = a;
+      }
+    });
+    if (ri >= 0) {   // b 原本在休息:互換上場 / 休息狀態
+      rd.resting[ri] = a;
+      state.playCount[a] = Math.max(0, get(state.playCount, a) - 1);
+      state.playCount[b] = get(state.playCount, b) + 1;
+      state.restCount[a] = get(state.restCount, a) + 1;
+      state.restCount[b] = Math.max(0, get(state.restCount, b) - 1);
+    }
+    cs.forEach(function (c) { pairsDelta(c, 1); });
+  }
+
   function renderSchedule() {
     document.getElementById("roundNo").textContent = state.round;
     var box = document.getElementById("schedule");
@@ -691,25 +886,53 @@
       block.className = "round-block";
       var head = '<div class="round-head">第 ' + rd.round + ' 輪</div>';
       var courtsHtml = rd.courts.map(function (ct, i) {
-        var teamA = ct.teamA.map(nameOf).join(" 、 ");
-        var teamB = ct.teamB.map(nameOf).join(" 、 ");
+        var cell = function (id) {
+          var sel = pickSelS && pickSelS.round === rd.round && pickSelS.id === id;
+          return '<span class="pill pick' + (sel ? ' sel' : '') + '" data-act="spick" data-round="' + rd.round +
+            '" data-pid="' + id + '">' + nameOf(id) + '</span>';
+        };
+        var teamA = ct.teamA.map(cell).join("");
+        var teamB = ct.teamB.map(cell).join("");
         var label = rd.courts.length > 1 ? '<div class="label">場地 ' + (i + 1) + '</div>' : '';
         return '<div class="court">' + label +
           '<div class="matchup">' +
-            '<div class="team a"><span class="pill">' + teamA + '</span></div>' +
+            '<div class="team a">' + teamA + '</div>' +
             '<span class="vs">VS</span>' +
-            '<div class="team b"><span class="pill">' + teamB + '</span></div>' +
-          '</div></div>';
+            '<div class="team b">' + teamB + '</div>' +
+          '</div>' + swapBoxS(rd, ct) + '</div>';
       }).join("");
       var restHtml = (state.showRest && rd.resting.length)
         ? '<div class="rest-line">😴 休息:<b>' + rd.resting.map(nameOf).join("、") + '</b></div>'
         : '';
-      block.innerHTML = head + courtsHtml + restHtml;
+      block.innerHTML = head + '<div class="courts-row">' + courtsHtml + '</div>' + restHtml;
       box.appendChild(block);
     });
   }
 
   // ---------- 多面網模式:畫面 ----------
+  function pills(ids, i) {
+    return ids.map(function (id) {
+      var sel = pickSel && pickSel.court === i && pickSel.id === id;
+      return '<span class="pill pick' + (sel ? ' sel' : '') + '" data-act="pick" data-court="' + i +
+        '" data-pid="' + id + '">' + nameOf(id) + '</span>';
+    }).join("");
+  }
+  function swapBox(ct, i, free) {
+    if (!pickSel || pickSel.court !== i) return "";
+    var chips = [];
+    function chip(id, tag) {
+      chips.push('<span class="swap-chip" data-act="swap" data-court="' + i + '" data-pid="' + pickSel.id +
+        '" data-with="' + id + '">' + nameOf(id) + (tag ? ' <small>' + tag + '</small>' : '') + '</span>');
+    }
+    free.slice().sort(function (a, b) { return waitOf(b) - waitOf(a); })
+      .forEach(function (id) { chip(id, "等 " + waitOf(id) + " 場"); });
+    ct.players.forEach(function (id) { if (id !== pickSel.id) chip(id, "對調"); });
+    state.multi.courts.forEach(function (c, k) {
+      if (c && k !== i) c.players.forEach(function (id) { chip(id, "網" + (k + 1)); });
+    });
+    return '<div class="swap-box"><p class="hint">要用誰換掉 <b>' + nameOf(pickSel.id) + '</b>?(再點一次該玩家取消)</p>' +
+      chips.join("") + '</div>';
+  }
   function renderMulti() {
     var perCourt = teamSizeVal() * 2;
     var nCourts = courtsVal();
@@ -721,6 +944,9 @@
     state.multi.courts.forEach(function (ct, i) {
       var div = document.createElement("div");
       div.className = "net" + (ct ? "" : " idle");
+      // 沒有空閒的人可換、且還有別的面網在打:直接排只會同一批人重打,所以改成下場等待
+      var noChoice = ct && free.length === 0 &&
+        state.multi.courts.some(function (c, j) { return j !== i && c; });
       var extra = i >= nCourts;   // 場地數被調小,但這面網還在打
       var head = '<div class="net-head"><span class="net-name">🏟 第 ' + (i + 1) + ' 面網</span>' +
         (ct ? '<span class="net-tag live">● 進行中(第 ' + ct.seq + ' 場)</span>'
@@ -729,13 +955,13 @@
       if (ct) {
         body = (extra ? '<p class="hint" style="margin:0 0 6px;color:var(--rest)">⚠️ 場地數已調小,這場打完後這面網會自動移除。</p>' : '') +
           '<div class="matchup">' +
-          '<div class="team a"><span class="pill">' + ct.teamA.map(nameOf).join(" 、 ") + '</span></div>' +
+          '<div class="team a">' + pills(ct.teamA, i) + '</div>' +
           '<span class="vs">VS</span>' +
-          '<div class="team b"><span class="pill">' + ct.teamB.map(nameOf).join(" 、 ") + '</span></div>' +
-          '</div>' +
+          '<div class="team b">' + pills(ct.teamB, i) + '</div>' +
+          '</div>' + swapBox(ct, i, free) +
           '<div class="net-actions">' +
             '<button class="primary" data-act="finish" data-court="' + i + '">' +
-              (extra ? "✔ 打完了" : "✔ 打完了,排下一場") + '</button>' +
+              (extra ? "✔ 打完了" : (noChoice ? "✔ 打完了,下場等待" : "✔ 打完了,排下一場")) + '</button>' +
             (extra ? '' : '<button class="ghost" data-act="end" data-court="' + i + '">只結束</button>') +
             '<button class="ghost" data-act="redraw" data-court="' + i + '">🎲 重抽</button>' +
           '</div>';
@@ -751,6 +977,8 @@
       div.innerHTML = head + body;
       box.appendChild(div);
     });
+
+    document.getElementById("undoMultiBtn").disabled = undoStack.length === 0;
 
     // 等待名單(依等待久排序)
     var wl = document.getElementById("waitList");
@@ -1061,6 +1289,7 @@
   function resetAll() {
     if (!confirm("確定要清除所有輪次、場次紀錄與統計?(玩家名單保留)")) return;
     clearAllProgress();
+    undoStack = [];
     save();
     renderSchedule();
     renderMulti();
@@ -1071,6 +1300,7 @@
   function resetMulti() {
     if (!confirm("確定要清除多面網的場次紀錄與統計?\n進行中的比賽也會一併結束。(玩家名單保留)")) return;
     clearAllProgress();
+    undoStack = [];
     save();
     renderMulti();
     renderStats();
@@ -1130,6 +1360,21 @@
     }
   };
   document.getElementById("copyBtn").onclick = copyAll;
+  document.getElementById("schedule").addEventListener("click", function (e) {
+    var el = e.target.closest("[data-act]");
+    if (!el) return;
+    var act = el.getAttribute("data-act"), r = +el.getAttribute("data-round"), pid = +el.getAttribute("data-pid");
+    if (act === "spick") {
+      pickSelS = (pickSelS && pickSelS.round === r && pickSelS.id === pid) ? null : { round: r, id: pid };
+      renderSchedule();
+    } else if (act === "sswap") {
+      var rd = state.history.find(function (h) { return h.round === r; });
+      if (rd) swapInRound(rd, pid, +el.getAttribute("data-with"));
+      pickSelS = null;
+      save(); renderSchedule(); renderStats();
+    }
+  });
+  document.getElementById("undoRoundBtn").onclick = undoRound;
   document.getElementById("resetRoundBtn").onclick = resetRound;
   document.getElementById("resetAllBtn").onclick = resetAll;
   document.getElementById("showRest").addEventListener("change", function () {
@@ -1161,12 +1406,27 @@
 
   // 多面網:場地卡上的按鈕(事件委派,因為卡片是動態產生的)
   document.getElementById("multiCourts").addEventListener("click", function (e) {
-    var btn = e.target.closest("button[data-act]");
+    var btn = e.target.closest("[data-act]");
     if (!btn || btn.disabled) return;
     var i = +btn.getAttribute("data-court");
     var act = btn.getAttribute("data-act");
+    if (act === "pick") {
+      var pid = +btn.getAttribute("data-pid");
+      pickSel = (pickSel && pickSel.court === i && pickSel.id === pid) ? null : { court: i, id: pid };
+      renderMulti();
+      return;
+    }
+    if (act === "swap") {
+      swapPlayers(i, +btn.getAttribute("data-pid"), +btn.getAttribute("data-with"));
+      pickSel = null;
+      save(); renderMulti(); renderStats();
+      return;
+    }
+    pickSel = null;
     if (act === "start") {
+      pushUndo();
       if (!startGame(i)) {
+        undoStack.pop();
         alert("空閒人數不足,無法開始。等其他場地打完,或新增玩家。");
         return;
       }
@@ -1174,6 +1434,7 @@
     } else if (act === "finish") {
       finishAndNext(i);
     } else if (act === "end") {
+      pushUndo();
       endGame(i);
       syncMultiCourts();
       save(); renderMulti(); renderStats();
@@ -1181,6 +1442,7 @@
       // 重抽:取消這場(不計入紀錄)、還原統計,再重新派一場
       var ct = state.multi.courts[i];
       if (!ct) return;
+      pushUndo();
       undoGameCounters(ct);
       state.multi.courts[i] = null;
       if (!startGame(i)) alert("目前空閒人數不足,無法重抽。");
@@ -1189,6 +1451,18 @@
   });
   document.getElementById("copyMultiBtn").onclick = copyMulti;
   document.getElementById("resetMultiBtn").onclick = resetMulti;
+  document.getElementById("undoMultiBtn").onclick = undoMulti;
+
+  // ---------- 按鈕回饋:發光 + 手機振動 ----------
+  document.addEventListener("pointerdown", function (e) {
+    var el = e.target.closest("button, .pill.pick, .swap-chip, .toggle, .mode-btn");
+    if (!el || el.disabled) return;
+    el.classList.remove("tap-glow");
+    void el.offsetWidth;                 // 重啟動畫
+    el.classList.add("tap-glow");
+    setTimeout(function () { el.classList.remove("tap-glow"); }, 500);
+    try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) {}
+  });
 
   // ---------- 啟動 ----------
   var hadSaved = load();
